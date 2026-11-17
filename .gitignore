@@ -1,0 +1,26 @@
+# Build outputs
+out/
+temp/
+
+# Reference clones (third-party sources, not shipped)
+reference/
+
+# Internal Chinese design docs (not for release)
+docs/
+
+# Workspace memory (local only)
+.workbuddy/
+
+# Test fixtures (rebuilt on demand)
+test/
+
+# Python
+__pycache__/
+*.pyc
+
+# Toolchain probe cache
+scripts/toolchain.json
+
+# Compiler artifacts (should not exist in src/, but be safe)
+*.obj
+*.pdb
