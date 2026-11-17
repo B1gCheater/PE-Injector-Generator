@@ -252,6 +252,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--shellcode-final", action="store_true",
                    help="convert the final EXE to shellcode via shellcode-generator "
                         "(mutually exclusive with --upx and --password)")
+    p.add_argument("--self-ti", action="store_true",
+                   help="process-level TrustedInstaller: relaunch self as a TI process "
+                        "(best effort; mutually exclusive with --shellcode-final and thread-level TI)")
     p.add_argument("--doctor", action="store_true")
     p.add_argument("--version", action="store_true")
     p.add_argument("-h", "--help", action="store_true")
@@ -538,6 +541,7 @@ def render_config_header(args) -> str:
     lines.append(f"#define PIG_PROCESS_MODE_FIRST {1 if args.process_mode == 'first' else 0}")
     lines.append(f"#define PIG_MATCH_SUBSTRING {1 if args.match == 'substring' else 0}")
     lines.append(f"#define PIG_WAITING {1 if args.waiting_process else 0}")
+    lines.append(f"#define PIG_SELF_TI {1 if args.self_ti else 0}")
     return "\n".join(lines) + "\n"
 
 
@@ -711,7 +715,16 @@ def main(argv=None):
     if args.shellcode_final and args.debug:
         fail("--shellcode-final cannot be combined with --debug (PDB/logs are meaningless for raw shellcode)", EXIT_ARGS)
 
+    if args.self_ti and args.shellcode_final:
+        fail("--self-ti and --shellcode-final are mutually exclusive (a shellcode loader cannot relaunch itself)", EXIT_ARGS)
+    if args.self_ti and args.trustedinstaller:
+        fail("--self-ti (process-level) and -ti/--trustedinstaller (thread-level) are mutually exclusive", EXIT_ARGS)
+
     jobs = build_jobs(args)
+    if args.self_ti:
+        for i, j in enumerate(jobs):
+            if j.get("ti") == "1":
+                fail(f"--self-ti conflicts with job {i} ti=1 (thread-level)", EXIT_ARGS)
     render_job_table(jobs, args)
 
     tc = preflight(jobs)

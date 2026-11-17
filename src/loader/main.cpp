@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
+#include <string>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -258,8 +259,100 @@ static int run() {
     return failures == 0 ? 0 : 1;
 }
 
+#if PIG_SELF_TI
+// ---------------------------------------------------------------------------
+// process-level TI (--self-ti): relaunch self as a TrustedInstaller process
+// ---------------------------------------------------------------------------
+
+// True when the loader's own code lives inside the main module image (i.e. it
+// was launched as a standalone EXE, not injected/mapped as shellcode or a DLL).
+static bool is_standalone_exe() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    const auto *dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(self);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE)
+        return false;
+    const auto *nt = reinterpret_cast<const IMAGE_NT_HEADERS *>(
+        reinterpret_cast<const char *>(self) + dos->e_lfanew);
+    ULONG_PTR base = reinterpret_cast<ULONG_PTR>(self);
+    ULONG_PTR size = nt->OptionalHeader.SizeOfImage;
+    ULONG_PTR here = reinterpret_cast<ULONG_PTR>(&is_standalone_exe);
+    return here >= base && here < base + size;
+}
+
+// True when launched with the internal --ti-child marker (a relaunched TI child).
+static bool is_ti_child() {
+    LPWSTR cmd = GetCommandLineW();
+    const wchar_t *needle = L"--ti-child";
+    const size_t nlen = wcslen(needle);
+    for (LPWSTR p = cmd; *p;) {
+        while (*p == L' ' || *p == L'\t') p++;
+        if (wcsncmp(p, needle, nlen) == 0 &&
+            (p[nlen] == L' ' || p[nlen] == L'\t' || p[nlen] == L'\0'))
+            return true;
+        while (*p && *p != L' ' && *p != L'\t') p++;
+    }
+    return false;
+}
+
+// Skips argv[0] in a raw command line (quote aware).
+static const wchar_t *skip_argv0(const wchar_t *p) {
+    bool quoted = false;
+    while (*p) {
+        if (*p == L'"') quoted = !quoted;
+        else if (!quoted && (*p == L' ' || *p == L'\t')) break;
+        p++;
+    }
+    while (*p == L' ' || *p == L'\t') p++;
+    return p;
+}
+
+// Relaunch this EXE as a TrustedInstaller process, forwarding the original args
+// plus an internal --ti-child marker. Returns true on success.
+static bool self_ti_relaunch() {
+    HANDLE tok = nullptr;
+    if (TiCreateToken(TI_SESSION_CURRENT, &tok) != ERROR_SUCCESS) {
+        PIG_LOG(L"self-ti: TiCreateToken failed");
+        return false;
+    }
+    wchar_t self[MAX_PATH];
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    std::wstring cmdline = L"\"" + std::wstring(self) + L"\" --ti-child";
+    const wchar_t *rest = skip_argv0(GetCommandLineW());
+    if (*rest) {
+        cmdline += L" ";
+        cmdline += rest;
+    }
+    TI_LAUNCH_INFO li;
+    li.cbSize = sizeof(li);
+    // Seamless requires a console window (TiLaunchWithToken enforces it); fall
+    // back to a new console when there is none (e.g. launched from a pipe).
+    BOOL seamless = (GetConsoleWindow() != nullptr) ? TRUE : FALSE;
+    DWORD e = TiLaunchWithToken(tok, cmdline.c_str(), seamless, &li);
+    CloseHandle(tok);
+    if (e != ERROR_SUCCESS) {
+        PIG_LOG(L"self-ti: TiLaunchWithToken failed err=%u", e);
+        return false;
+    }
+    CloseHandle(li.hThread);
+    CloseHandle(li.hProcess);
+    PIG_LOG(L"self-ti: relaunched as TI (pid=%u)", li.dwProcessId);
+    return true;
+}
+#endif  // PIG_SELF_TI
+
+static int entry() {
+#if PIG_SELF_TI
+    if (!is_ti_child()) {
+        if (is_standalone_exe() && self_ti_relaunch())
+            return 0;  // relaunched; the TI child takes over
+        PIG_LOG(L"self-ti: not a standalone EXE or relaunch failed; running without TI");
+    }
+#endif
+    return run();
+}
+
 #if PIG_CONSOLE
-int main() { return run(); }
+int main() { return entry(); }
 #else
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return run(); }
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return entry(); }
 #endif
