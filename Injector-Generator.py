@@ -182,6 +182,8 @@ def render_help() -> str:
             ("--debug", "-Od + PDB + logs (default: release)"),
             ("--static-crt", "/MT static CRT (default: /MD)"),
             ("-ti, --trustedinstaller", "run payloads with a TrustedInstaller token (best effort)"),
+            ("--self-ti", "relaunch self as a TI process; the whole process tree inherits TI "
+                          "(best effort; excludes --shellcode-final / thread-level TI)"),
         ]),
         H("TARGET & WAIT"),
         _options([
