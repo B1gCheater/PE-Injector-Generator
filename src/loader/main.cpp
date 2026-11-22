@@ -11,6 +11,7 @@
 #include "sha256.hpp"
 #include "ti_util.hpp"
 #include "stub_sc_data.h"
+#include "privilege.h"
 
 #include <windows.h>
 #include <tlhelp32.h>
@@ -340,7 +341,13 @@ static bool self_ti_relaunch() {
 }
 #endif  // PIG_SELF_TI
 
+// Loader exit codes (see docs/cli-help.md). A plain user cannot inject
+// remotely or elevate, so we gate on that before anything else runs.
+#define EXIT_NOT_ELEVATED 13
+
 static int entry() {
+    if (privilege_level() == 0)
+        return EXIT_NOT_ELEVATED;
 #if PIG_SELF_TI
     if (!is_ti_child()) {
         if (is_standalone_exe() && self_ti_relaunch())

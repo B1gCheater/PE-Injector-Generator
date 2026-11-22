@@ -555,7 +555,8 @@ def compile_exe(args, tc, use_zstd: bool = False) -> Path:
                str(SRC_LOADER / "dllload.cpp"), str(SRC_LOADER / "proc.cpp"),
                str(SRC_LOADER / "remotemap.cpp"), str(SRC_LOADER / "codec.cpp"),
                str(SRC_LOADER / "sha256.cpp"), str(SRC_LOADER / "aes.c"),
-               str(SRC_LOADER / "miniz.c"), str(SRC_LOADER / "miniz_tinfl.c")]
+               str(SRC_LOADER / "miniz.c"), str(SRC_LOADER / "miniz_tinfl.c"),
+               str(SRC_LOADER / "privilege.c")]
     if args.output:
         out_exe = Path(args.output)
     else:
